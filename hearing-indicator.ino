@@ -1,18 +1,19 @@
 #define SAMPLE_SIZE 1000
+#define QUIET true
+#define LOUD false
+#define threshold 0.7
 
 #include "Arduino_LED_Matrix.h"
 #include "amogus.h"
 #include "icons.h"
 
 #define AMOGUS_PIN 8
-#define NO_SOUND_PIN 7
 #define NORMAL_MODE 0
 #define AMOGUS_MODE 1
 const int mic = A0;
 
-#define THRESHOLD 210
-const int amogus_delay = 30;
-const int normal_delay = 55;
+const int amogus_delay = 0;
+const int normal_delay = 70;
 int delay_duration = normal_delay;
 
 ArduinoLEDMatrix matrix;
@@ -20,9 +21,14 @@ int mode = NORMAL_MODE;
 int framecount = sizeof(icons) / 12;
 int current_frame = 0;
 
+bool last[5];
+bool volume;
+
 float mic_val_raw[SAMPLE_SIZE];
 float rms_mic;
-float mic_threshold = THRESHOLD;
+float sampled_avgs[10];
+float loudest_bg;
+float myDB;
 
 // calcualtes rms value of array
 float rms(float* num_array) {
@@ -34,6 +40,14 @@ float rms(float* num_array) {
   }
   avg = sum / SAMPLE_SIZE;
   return pow(avg, 0.5);
+}
+
+float max_of_10(float* averages) {
+  float max = 0;
+  for (int i = 0; i < 10; i++) {
+    if (averages[i] > max) max = averages[i]; 
+  }
+  return max;
 }
 
 // checks for change in pin voltages
@@ -59,12 +73,6 @@ void check_mode() {
       framecount = sizeof(icons) / 12; 
     }
   }
-
-  if(digitalRead(NO_SOUND_PIN)) {
-    mic_threshold = -999;
-  } else {
-    mic_threshold = THRESHOLD;
-  }
 }
 
 void setup() {
@@ -74,28 +82,73 @@ void setup() {
   //initialize microphone input
   pinMode(mic, INPUT);
   pinMode(AMOGUS_PIN, INPUT);
-  pinMode(NO_SOUND_PIN, INPUT);
-
-  if(digitalRead(NO_SOUND_PIN)) {
-    delay_duration = 0;
-  }
 
   // initialize LED matrix output
   matrix.begin();
   check_mode();
   // matrix.loadFrame();
   current_frame++;
+
+  //sample background noise
+  for (int j = 0; j < 10; j++) {
+    for (int i = 0; i < SAMPLE_SIZE; i++) {
+      mic_val_raw[i] = analogRead(mic);
+    }
+    if (mode == NORMAL_MODE) {
+      delay(10);
+    }
+  sampled_avgs[j] = rms(mic_val_raw);
+  }
+  loudest_bg = max_of_10(sampled_avgs);
+  Serial.println(loudest_bg);
+
+  for (int i = 0; i < 5; i++) {
+    last[i] = QUIET;
+  }
 }
 
 void loop() {
-  for (int i = 0; i < SAMPLE_SIZE; i++) {
-    mic_val_raw[i] = analogRead(mic);
-  }
-  rms_mic = rms(mic_val_raw);
-  Serial.println(rms_mic);
   check_mode();
-  if (rms_mic >= mic_threshold) {
-    // Serial.println("loud");
+  delay(delay_duration);
+
+  int numAverages;
+  if (mode == NORMAL_MODE) {
+    numAverages = 10;
+  } else {
+    numAverages = 1;
+  }
+  for (int j = 0; j < numAverages; j++) {
+    for (int i = 0; i < SAMPLE_SIZE; i++) {
+      mic_val_raw[i] = analogRead(mic);
+    }
+    delay(10);
+  rms_mic = rms(mic_val_raw);
+  sampled_avgs[j] = rms_mic;
+  }
+  rms_mic = max_of_10(sampled_avgs);
+  myDB = 20 * log10(rms_mic / loudest_bg);
+  Serial.println(myDB);
+  if (myDB < threshold) volume = QUIET;
+  else volume = LOUD;
+
+  // add value to last measured
+  for (int i = 0; i < 4; i++) {
+    last[i] = last[i + 1];
+  }
+  last[4] = volume;
+
+  int numQuiets = 0;
+  for (int i = 0; i  < 5; i++) {
+    if (last[i] == QUIET) numQuiets++;
+  }
+  Serial.println(numQuiets);
+  if (numQuiets >= 4) {
+    // show icon for cannot hear
+    if (mode == NORMAL_MODE) {
+      matrix.loadFrame(icons[1]);
+    }
+  }
+  else {
     if (mode == AMOGUS_MODE) {
       matrix.loadFrame(amogus[current_frame]);
       // increment frame count and loop if needed
@@ -104,12 +157,8 @@ void loop() {
         current_frame = 0;
       }
     } else {
+      // show icon for able to hear
       matrix.loadFrame(icons[0]);
     }
-  } else {
-    if (mode == NORMAL_MODE) {
-      matrix.loadFrame(icons[1]);
-    }
   }
-  delay(delay_duration);
 }
