@@ -81,13 +81,13 @@ void setup() {
   Serial.println(loudest_bg);
 
   for (int i = 0; i < 5; i++) {
-    last[i] = false;
+    last[i] = QUIET;
   }
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
-  delay(250); //wait half a second
+  delay(250); //wait 1/4 a second
   for (int j = 0; j < 10; j++) {
     for (int i = 0; i < SAMPLE_SIZE; i++) {
       mic_val_raw[i] = analogRead(mic);
@@ -108,7 +108,8 @@ void loop() {
   for (int i = 0; i  < 5; i++) {
     if (last[i] == QUIET) numQuiets++;
   }
-  if (numQuiets >= 3) {
+  Serial.println(numQuiets);
+  if (numQuiets >= 4) {
     // output quiet message
     Serial.println(message);
   }
@@ -121,5 +122,5 @@ void loop() {
   for (int i = 0; i < 4; i++) {
     last[i] = last[i + 1];
   }
-  last[5] = volume;
+  last[4] = volume;
 }
