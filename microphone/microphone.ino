@@ -2,7 +2,7 @@
 #define SAMPLE_SIZE 1000
 #define QUIET true
 #define LOUD false
-#define threshold 0.5
+#define threshold 0
 
 rgb_lcd lcd;
 //const int DISPLAY_RGB_ADDR = 0x62; this is true for v4
@@ -19,6 +19,8 @@ float rms_mic;
 float sampled_avgs[10];
 float loudest_bg;
 float myDB;
+
+bool last[5];
 
 const String message = "SPEAK UP I CAN'T HEAR YOU";
 
@@ -42,9 +44,9 @@ float rms(float* num_array) {
   return pow(avg, 0.5);
 }
 
-float max_of_5(float* averages) {
+float max_of_10(float* averages) {
   float max = 0;
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < 10; i++) {
     if (averages[i] > max) max = averages[i]; 
   }
   return max;
@@ -72,32 +74,52 @@ void setup() {
     for (int i = 0; i < SAMPLE_SIZE; i++) {
       mic_val_raw[i] = analogRead(mic);
     }
+    delay(10);
   sampled_avgs[j] = rms(mic_val_raw);
   }
-  loudest_bg = max_of_5(sampled_avgs);
+  loudest_bg = max_of_10(sampled_avgs);
   Serial.println(loudest_bg);
+
+  for (int i = 0; i < 5; i++) {
+    last[i] = false;
+  }
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
-  delay(500); //wait half a second
-  for (int i; i < SAMPLE_SIZE; i++) {
-    mic_val_raw[i] = analogRead(mic);
-  }
+  delay(250); //wait half a second
+  for (int j = 0; j < 10; j++) {
+    for (int i = 0; i < SAMPLE_SIZE; i++) {
+      mic_val_raw[i] = analogRead(mic);
+    }
+    delay(10);
   rms_mic = rms(mic_val_raw);
+  sampled_avgs[j] = rms_mic;
+  }
+  rms_mic = max_of_10(sampled_avgs);
   myDB = 20 * log10(rms_mic / loudest_bg);
-  Serial.print(rms_mic);
-  Serial.print(" ");
+  //Serial.println(rms_mic);
+  //Serial.print(" ");
   Serial.println(myDB);
   if (myDB < threshold) volume = QUIET;
   else volume = LOUD;
-  if (volume == QUIET) {
-    //lcd.display();
+
+  int numQuiets = 0;
+  for (int i = 0; i  < 5; i++) {
+    if (last[i] == QUIET) numQuiets++;
+  }
+  if (numQuiets >= 3) {
+    // output quiet message
     Serial.println(message);
   }
-  else if (volume == LOUD) {
-    //lcd.noDisplay();
+  else {
+    // output loud message
     Serial.println("loud");
   }
 
+  // add value to last measured
+  for (int i = 0; i < 4; i++) {
+    last[i] = last[i + 1];
+  }
+  last[5] = volume;
 }
