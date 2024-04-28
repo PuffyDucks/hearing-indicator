@@ -2,6 +2,7 @@
 #define SAMPLE_SIZE 1000
 #define QUIET true
 #define LOUD false
+#define threshold 0.5
 
 rgb_lcd lcd;
 //const int DISPLAY_RGB_ADDR = 0x62; this is true for v4
@@ -17,6 +18,7 @@ float mic_val_raw[SAMPLE_SIZE];
 float rms_mic;
 float sampled_avgs[10];
 float loudest_bg;
+float myDB;
 
 const String message = "SPEAK UP I CAN'T HEAR YOU";
 
@@ -73,6 +75,7 @@ void setup() {
   sampled_avgs[j] = rms(mic_val_raw);
   }
   loudest_bg = max_of_5(sampled_avgs);
+  Serial.println(loudest_bg);
 }
 
 void loop() {
@@ -82,7 +85,12 @@ void loop() {
     mic_val_raw[i] = analogRead(mic);
   }
   rms_mic = rms(mic_val_raw);
-  Serial.println(rms_mic);
+  myDB = 20 * log10(rms_mic / loudest_bg);
+  Serial.print(rms_mic);
+  Serial.print(" ");
+  Serial.println(myDB);
+  if (myDB < threshold) volume = QUIET;
+  else volume = LOUD;
   if (volume == QUIET) {
     //lcd.display();
     Serial.println(message);
